@@ -1,0 +1,9 @@
+Sample: 400 of the most-owned games on Steam (>= 50 reviews).
+Free-to-play share: 26%.
+Median review score - paid: 91.9% | free: 80.9%.
+Median owners - paid: 7.5M | free: 7.5M.
+Price vs review-score correlation (paid games): -0.23.
+Most common genres: Action (287), Adventure (33), Indie (18), Simulation (14), Casual (13).
+Highest-rated genres (median): Indie 96%, Casual 95%, Strategy 92%, Adventure 92%, RPG 89%.
+Biggest developers by total owners: Valve (511M), PUBG Corporation (150M), Respawn (150M), CAPCOM Co., Ltd. (87M), Rockstar North (82M).
+(Note: SteamSpy owner counts are banded, so owner medians are coarse — review scores are the more reliable signal.)
