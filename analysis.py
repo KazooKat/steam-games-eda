@@ -1,9 +1,11 @@
-"""Exploratory analysis of the top most-owned Steam games.
+"""Exploratory analysis of the most-owned Steam games.
 
 Question: what separates a highly-rated, widely-played Steam game from the rest?
-We look at how pricing (free-to-play vs paid), genre, and review volume relate to
-two success signals: the review score (share of positive reviews) and the estimated
-owner count.
+We look at how pricing (free-to-play vs paid) and genre relate to two success
+signals — the review score (share of positive reviews) and estimated owners.
+
+Cleaning, the review metric, and the colour palette are shared with the live
+dashboard via steam_eda.py, so the README charts and the app agree by construction.
 
 Run after fetch_data.py + enrich_data.py:
     python analysis.py
@@ -14,116 +16,157 @@ Outputs:
 """
 
 import os
-import textwrap
 
 import matplotlib
+
 matplotlib.use("Agg")  # headless: write PNGs, never open a window
 import matplotlib.pyplot as plt
 import pandas as pd
 
-HERE = os.path.dirname(__file__)
-DATA_PATH = os.path.join(HERE, "data", "steam_games_detailed.csv")
+import steam_eda as se
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 CHART_DIR = os.path.join(HERE, "charts")
 FINDINGS_PATH = os.path.join(HERE, "FINDINGS.txt")
 
-MIN_REVIEWS = 50  # ignore games with too few reviews to score reliably
-
 
 # --------------------------------------------------------------------------- #
-# Load + clean
+# Shared chart styling (mirrors the dashboard's clean-light look)
 # --------------------------------------------------------------------------- #
-def owners_midpoint(raw: str) -> float:
-    """'100,000,000 .. 200,000,000' -> 150000000.0"""
-    try:
-        lo, hi = (int(part.replace(",", "").strip()) for part in str(raw).split(".."))
-        return (lo + hi) / 2
-    except (ValueError, TypeError):
-        return float("nan")
-
-
-def load() -> pd.DataFrame:
-    df = pd.read_csv(DATA_PATH)
-    df["owners_est"] = df["owners"].map(owners_midpoint)
-    df["reviews_total"] = df["positive"].fillna(0) + df["negative"].fillna(0)
-    df["review_score"] = (df["positive"] / df["reviews_total"] * 100).where(df["reviews_total"] > 0)
-    df["price_usd"] = pd.to_numeric(df["price"], errors="coerce").fillna(0) / 100
-    df["is_free"] = df["price_usd"].eq(0)
-    df["playtime_hours"] = pd.to_numeric(df["average_forever"], errors="coerce").fillna(0) / 60
-    df["primary_genre"] = (
-        df["genre"].fillna("").str.split(",").str[0].str.strip().replace("", pd.NA)
+def apply_style() -> None:
+    plt.rcParams.update(
+        {
+            "figure.facecolor": "white",
+            "axes.facecolor": "white",
+            "axes.edgecolor": se.GRID,
+            "axes.linewidth": 1.0,
+            "axes.grid": True,
+            "axes.axisbelow": True,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "grid.color": se.GRID,
+            "grid.linewidth": 0.8,
+            "font.size": 11,
+            "font.family": "DejaVu Sans",
+            "axes.titlesize": 13,
+            "axes.titleweight": "bold",
+            "axes.titlecolor": se.INK,
+            "axes.labelcolor": se.TEXT,
+            "text.color": se.TEXT,
+            "xtick.color": se.TEXT,
+            "ytick.color": se.TEXT,
+        }
     )
-    return df[df["reviews_total"] >= MIN_REVIEWS].copy()
+
+
+def save(fig, name: str) -> None:
+    fig.tight_layout()
+    fig.savefig(os.path.join(CHART_DIR, name), dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  chart -> charts/{name}")
+
+
+def label_barh(ax, values, fmt="{:.0f}", pad=0.01) -> None:
+    """Direct value labels at the end of each horizontal bar."""
+    span = ax.get_xlim()[1]
+    for bar, value in zip(ax.patches, values):
+        ax.text(
+            bar.get_width() + span * pad,
+            bar.get_y() + bar.get_height() / 2,
+            fmt.format(value),
+            va="center",
+            ha="left",
+            fontsize=10,
+            color=se.TEXT,
+        )
 
 
 # --------------------------------------------------------------------------- #
 # Charts
 # --------------------------------------------------------------------------- #
-def save(fig, name: str) -> None:
-    path = os.path.join(CHART_DIR, name)
-    fig.tight_layout()
-    fig.savefig(path, dpi=120, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  chart -> charts/{name}")
-
-
 def chart_rating_distribution(df: pd.DataFrame) -> None:
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.hist(df["review_score"].dropna(), bins=24, color="#1b6ca8", edgecolor="white")
-    ax.set_title("Review score distribution (top owned Steam games)")
+    scores = df["review_score"].dropna()
+    ax.hist(scores, bins=24, color=se.ACCENT, edgecolor="white")
+    med = scores.median()
+    ax.axvline(med, color=se.INK, linestyle="--", linewidth=1.2)
+    ax.text(med - 1, ax.get_ylim()[1] * 0.95, f"median {med:.0f}%", ha="right", va="top", color=se.INK)
+    ax.set_title("Most top games score 70–95% positive")
     ax.set_xlabel("% positive reviews")
     ax.set_ylabel("Number of games")
     save(fig, "rating_distribution.png")
 
 
 def chart_free_vs_paid(df: pd.DataFrame) -> None:
-    grp = df.groupby("is_free")
-    labels = ["Paid", "Free-to-play"]
-    rating = [grp.get_group(False)["review_score"].median(), grp.get_group(True)["review_score"].median()]
-    owners = [grp.get_group(False)["owners_est"].median() / 1e6, grp.get_group(True)["owners_est"].median() / 1e6]
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(9, 4.5))
-    a1.bar(labels, rating, color=["#1b6ca8", "#28a745"])
-    a1.set_title("Median review score")
-    a1.set_ylabel("% positive")
-    a2.bar(labels, owners, color=["#1b6ca8", "#28a745"])
-    a2.set_title("Median estimated owners")
-    a2.set_ylabel("Millions of owners")
-    fig.suptitle("Free-to-play vs paid", fontweight="bold")
+    """Honest pricing comparison: review quality only.
+
+    Median owners are roughly equal across paid/free in this sample (owner counts
+    are banded), so free-to-play's real reach advantage is in the *extreme top*,
+    not the median — that is left to the scatter rather than charted as a median.
+    """
+    order = ["Paid", "Free-to-play"]
+    raw = df.groupby("price_type")["review_score"].median().reindex(order)
+    wilson = df.groupby("price_type")["rating_quality"].median().reindex(order)
+
+    x = range(len(order))
+    width = 0.38
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    b1 = ax.bar([i - width / 2 for i in x], raw.values, width, label="Raw % positive", color=se.NEUTRAL)
+    b2 = ax.bar([i + width / 2 for i in x], wilson.values, width, label="Reliable (Wilson)", color=se.ACCENT)
+    ax.bar_label(b1, fmt="%.0f%%", padding=3, color=se.TEXT)
+    ax.bar_label(b2, fmt="%.0f%%", padding=3, color=se.TEXT)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(order)
+    ax.set_ylim(0, 100)
+    ax.set_ylabel("Median review score")
+    ax.set_title("Paid games rate higher than free-to-play")
+    ax.legend(frameon=False, loc="lower right")
     save(fig, "free_vs_paid.png")
 
 
 def chart_top_genres(df: pd.DataFrame) -> None:
     counts = df["primary_genre"].value_counts().head(12).iloc[::-1]
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.barh(counts.index, counts.values, color="#1b6ca8")
-    ax.set_title("Most common primary genres")
+    ax.barh(counts.index, counts.values, color=se.ACCENT)
+    ax.margins(x=0.12)
+    label_barh(ax, counts.values, fmt="{:.0f}")
+    ax.set_title("Action dominates the most-owned catalog")
     ax.set_xlabel("Number of games")
     save(fig, "top_genres.png")
 
 
 def chart_rating_by_genre(df: pd.DataFrame) -> None:
-    top = df["primary_genre"].value_counts().head(10).index
-    med = (
-        df[df["primary_genre"].isin(top)]
-        .groupby("primary_genre")["review_score"].median()
+    top = (
+        df.groupby("primary_genre")
+        .filter(lambda g: len(g) >= 5)
+        .groupby("primary_genre")["rating_quality"]
+        .median()
         .sort_values()
+        .tail(10)
     )
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.barh(med.index, med.values, color="#28a745")
-    ax.set_xlim(left=min(60, med.min() - 5))
-    ax.set_title("Median review score by genre (top 10 genres)")
-    ax.set_xlabel("% positive reviews")
+    ax.barh(top.index, top.values, color=se.ACCENT)
+    ax.set_xlim(0, 100)  # full 0–100 axis: do not exaggerate small gaps
+    label_barh(ax, top.values, fmt="{:.0f}%", pad=0.015)
+    ax.set_title("Indie & strategy are the best-loved genres")
+    ax.set_xlabel("Median reliable rating, % (Wilson lower bound)")
     save(fig, "rating_by_genre.png")
 
 
 def chart_owners_vs_rating(df: pd.DataFrame) -> None:
     fig, ax = plt.subplots(figsize=(8, 5))
     sub = df.dropna(subset=["owners_est", "review_score"])
-    colors = sub["is_free"].map({True: "#28a745", False: "#1b6ca8"})
+    colors = sub["is_free"].map({True: se.FREE, False: se.PAID})
     ax.scatter(sub["review_score"], sub["owners_est"], c=colors, alpha=0.6, edgecolor="white", linewidth=0.3)
     ax.set_yscale("log")
-    ax.set_title("Ownership vs review score (green = free-to-play)")
+    ax.set_title("Reach and reception are largely independent")
     ax.set_xlabel("% positive reviews")
     ax.set_ylabel("Estimated owners (log scale)")
+    handles = [
+        plt.Line2D([0], [0], marker="o", linestyle="", color=se.PAID, label="Paid"),
+        plt.Line2D([0], [0], marker="o", linestyle="", color=se.FREE, label="Free-to-play"),
+    ]
+    ax.legend(handles=handles, frameon=False, loc="lower left")
     save(fig, "owners_vs_rating.png")
 
 
@@ -140,27 +183,32 @@ def findings(df: pd.DataFrame) -> str:
     best_genres = (
         df.groupby("primary_genre")
         .filter(lambda g: len(g) >= 5)
-        .groupby("primary_genre")["review_score"].median()
-        .sort_values(ascending=False).head(5)
+        .groupby("primary_genre")["rating_quality"]
+        .median()
+        .sort_values(ascending=False)
+        .head(5)
     )
     top_devs = df.groupby("developer")["owners_est"].sum().sort_values(ascending=False).head(5)
 
-    lines = []
-    lines.append(f"Sample: {n} of the most-owned games on Steam (>= {MIN_REVIEWS} reviews).")
-    lines.append(f"Free-to-play share: {free_share:.0f}%.")
-    lines.append(f"Median review score - paid: {paid['review_score'].median():.1f}% | free: {free['review_score'].median():.1f}%.")
-    lines.append(f"Median owners - paid: {paid['owners_est'].median()/1e6:.1f}M | free: {free['owners_est'].median()/1e6:.1f}M.")
-    lines.append(f"Price vs review-score correlation (paid games): {corr:+.2f}.")
-    lines.append("Most common genres: " + ", ".join(f"{g} ({c})" for g, c in top_genres.items()) + ".")
-    lines.append("Highest-rated genres (median): " + ", ".join(f"{g} {v:.0f}%" for g, v in best_genres.items()) + ".")
-    lines.append("Biggest developers by total owners: " + ", ".join(f"{d} ({v/1e6:.0f}M)" for d, v in top_devs.items()) + ".")
-    lines.append("(Note: SteamSpy owner counts are banded, so owner medians are coarse — review scores are the more reliable signal.)")
+    lines = [
+        f"Sample: {n} of the most-owned games on Steam (>= {se.MIN_REVIEWS} reviews).",
+        f"Free-to-play share: {free_share:.0f}%.",
+        f"Median review score (raw % positive) - paid: {paid['review_score'].median():.1f}% | free: {free['review_score'].median():.1f}%.",
+        f"Median reliable rating (Wilson) - paid: {paid['rating_quality'].median():.1f}% | free: {free['rating_quality'].median():.1f}%.",
+        f"Median estimated owners - paid: {paid['owners_est'].median()/1e6:.1f}M | free: {free['owners_est'].median()/1e6:.1f}M (banded, so roughly equal).",
+        f"Price vs review-score correlation (paid games): {corr:+.2f}.",
+        "Most common genres: " + ", ".join(f"{g} ({c})" for g, c in top_genres.items()) + ".",
+        "Best-loved genres (Wilson median, >=5 titles): " + ", ".join(f"{g} {v:.0f}%" for g, v in best_genres.items()) + ".",
+        "Biggest developers by total owners: " + ", ".join(f"{d} ({v/1e6:.0f}M)" for d, v in top_devs.items()) + ".",
+        "Note: SteamSpy owner counts are banded ranges, so owner medians are coarse — review scores are the more reliable signal.",
+    ]
     return "\n".join(lines)
 
 
 def main() -> None:
     os.makedirs(CHART_DIR, exist_ok=True)
-    df = load()
+    apply_style()
+    df = se.load_data()
     print(f"Loaded {len(df)} scored games.\n")
 
     chart_rating_distribution(df)

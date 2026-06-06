@@ -5,7 +5,7 @@ clean and explore it in Python, and ship an interactive dashboard. The question 
 separates a highly-rated, widely-played Steam game from the rest?**
 
 **▶ Live dashboard:** https://steam-games-eda-kazookat.streamlit.app/
-**Stack:** Python · pandas · Plotly · Streamlit · matplotlib
+**Stack:** Python · pandas · NumPy · Plotly · Streamlit · matplotlib
 **Sample:** the 400 most-owned games on Steam (enriched with genre + tags), pulled June 2026.
 
 > **Run the dashboard in under a minute** — see [Quick start](#quick-start). The cleaned data
@@ -15,17 +15,20 @@ separates a highly-rated, widely-played Steam game from the rest?**
 
 ## Key findings
 
-### 1. Free-to-play wins reach. Paid wins ratings.
+### 1. Free-to-play wins reach; paid wins ratings.
 Free-to-play games are only **26%** of the most-owned list, yet they include the absolute
-giants (CS:GO, Apex, PUBG). But when you look at *review quality*, paid games clearly win:
+giants (CS:GO, Apex, PUBG). On *reach*, the two camps actually tie at the median (~7.5M
+estimated owners each — and SteamSpy's owner counts are banded, so that's coarse); F2P's
+advantage is concentrated in the extreme top, not the typical title. On *review quality*,
+paid games clearly win:
 
-| Pricing | Median review score |
-|---------|---------------------|
-| Paid | **91.9%** positive |
-| Free-to-play | **80.9%** positive |
+| Pricing | Median rating (raw % positive) | Median rating (Wilson) |
+|---------|-------------------------------:|-----------------------:|
+| Paid | **91.9%** | **91.6%** |
+| Free-to-play | **80.9%** | **80.6%** |
 
-Free games reach huge audiences, but their average reception is meaningfully lower — likely
-the cost of monetization friction and a lower barrier to install-and-bounce.
+The 11-point gap barely moves under the Wilson lower-bound adjustment — these titles carry
+tens of thousands of reviews, so the spread is real signal, not a small-sample artifact.
 
 ![Free-to-play vs paid](charts/free_vs_paid.png)
 
@@ -33,13 +36,13 @@ the cost of monetization friction and a lower barrier to install-and-bounce.
 **Action** accounts for **72%** of the most-owned titles (287 of 400) — it dominates the
 catalog. But the highest *median* review scores belong to smaller genres:
 
-- Most common: **Action (287)**, Adventure (33), Indie (18), Simulation (14), Casual (13)
-- Highest rated: **Indie (96%)**, Casual (95%), Strategy (92%), Adventure (92%), RPG (89%)
+- Most common: **Action (287)**, Adventure (33), Indie (19), Simulation (14), Casual (13)
+- Best rated (Wilson median): **Indie (95%)**, Casual (95%), Strategy (92%), Adventure (91%), RPG (89%)
 
 Action is how you get *big*; Indie/Strategy is how you get *loved*.
 
 ![Most common genres](charts/top_genres.png)
-![Median review score by genre](charts/rating_by_genre.png)
+![Best-rated genres by Wilson median](charts/rating_by_genre.png)
 
 ### 3. A higher price tag doesn't buy a better game.
 Across paid titles, price and review score are **weakly negatively correlated (-0.23)** —
@@ -92,15 +95,21 @@ The dashboard is deployed on Streamlit Community Cloud:
 |------|------|
 | `fetch_data.py` | Pulls the 1,000 most-owned games from SteamSpy's bulk endpoint → `data/steam_games.csv` |
 | `enrich_data.py` | Adds genre + top tags per title from SteamSpy's per-app endpoint → `data/steam_games_detailed.csv` |
-| `analysis.py` | Cleans the data, computes the findings (`FINDINGS.txt`), exports charts to `charts/` |
-| `app.py` | Streamlit dashboard over the cleaned data |
+| `steam_eda.py` | Shared data loading, cleaning, Wilson scoring + colour palette — imported by both `analysis.py` and `app.py` |
+| `analysis.py` | Computes the findings (`FINDINGS.txt`) and exports charts to `charts/` |
+| `app.py` | Streamlit dashboard over the cleaned data (theme in `.streamlit/config.toml`) |
 | `data/` | Cached CSV snapshots (committed for reproducibility) |
 | `charts/` | Exported figures used above |
 
-**Data cleaning highlights:** owner counts arrive as banded ranges (`"5,000,000 .. 10,000,000"`)
-and are converted to midpoints; review score is computed as positive ÷ total reviews; price is
-parsed from cents; genre is split to a primary label. Games with fewer than 50 reviews are
-dropped so scores are meaningful.
+**Data cleaning & scoring highlights:** owner counts arrive as banded ranges
+(`"5,000,000 .. 10,000,000"`) and are converted to midpoints; price is parsed from cents; the
+primary genre strips pricing/status tags (`Free To Play`, `Early Access`) so a game's *genre*
+isn't its business model. Games with fewer than 50 reviews are dropped. Ratings are computed
+two ways — the raw positive share **and** the **Wilson lower-bound score**, which folds review
+*volume* into the rating so a 10/10 title can't outrank a 9,000/10,000 one (the standard
+"[how not to sort by average rating](https://www.evanmiller.org/how-not-to-sort-by-average-rating.html)"
+fix). Cleaning, the metric, and the colour palette live in `steam_eda.py`, shared by the
+analysis script and the dashboard so the README charts and the live app agree by construction.
 
 ---
 
