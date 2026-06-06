@@ -4,6 +4,7 @@ An end-to-end data project: pull live data from the [SteamSpy](https://steamspy.
 clean and explore it in Python, and ship an interactive dashboard. The question — **what
 separates a highly-rated, widely-played Steam game from the rest?**
 
+**▶ Live dashboard:** https://steam-games-eda-kazookat.streamlit.app/
 **Stack:** Python · pandas · Plotly · Streamlit · matplotlib
 **Sample:** the 400 most-owned games on Steam (enriched with genre + tags), pulled June 2026.
 
@@ -79,9 +80,9 @@ streamlit run app.py
 The dashboard lets you filter by genre, pricing, and review volume, and updates the KPIs
 and charts live.
 
-### Deploy it free
-Push this repo to GitHub and deploy `app.py` on
-[Streamlit Community Cloud](https://share.streamlit.io) — one click, no server needed.
+### Live demo
+The dashboard is deployed on Streamlit Community Cloud:
+**https://steam-games-eda-kazookat.streamlit.app/**
 
 ---
 
